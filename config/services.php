@@ -17,6 +17,10 @@ return [
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],
+    
+    'deepseek' => [
+        'api_key' => env('DEEPSEEK_API_KEY'),
+    ],
 
     'resend' => [
         'key' => env('RESEND_API_KEY'),

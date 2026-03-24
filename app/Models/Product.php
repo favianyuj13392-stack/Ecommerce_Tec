@@ -15,6 +15,8 @@ class Product extends Model
         'slug',
         'descripcion',
         'precio',
+        'marca',
+        'categoria',
         'attributes',
         'has_variants',
     ];

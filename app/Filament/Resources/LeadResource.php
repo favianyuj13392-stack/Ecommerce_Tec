@@ -50,6 +50,16 @@ class LeadResource extends Resource
                     ->numeric()
                     ->sortable()
                     ->label('Interacciones'),
+                Tables\Columns\IconColumn::make('is_ai_enabled')
+                    ->boolean()
+                    ->label('IA Activa'),
+                Tables\Columns\TextColumn::make('whatsapp_messages_sum_tokens_used')
+                    ->sum('whatsappMessages', 'tokens_used')
+                    ->label('Consumo Total')
+                    ->badge()
+                    ->color('warning')
+                    ->sortable()
+                    ->formatStateUsing(fn ($state) => $state ? number_format($state) . ' tokens' : '0 tokens'),
             ])
             ->filters([
                 //
@@ -67,7 +77,7 @@ class LeadResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            RelationManagers\WhatsappMessagesRelationManager::class,
         ];
     }
 
