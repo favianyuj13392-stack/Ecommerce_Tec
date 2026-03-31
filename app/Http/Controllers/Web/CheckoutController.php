@@ -16,7 +16,10 @@ class CheckoutController extends Controller
         // Reconstruimos los productos
         $itemsList = is_array($order->items) ? $order->items : json_decode($order->items, true) ?? [];
         
-        $products = \App\Models\Product::whereIn('slug', $itemsList)->get();
+        // Extraemos solo los slugs (ya que ahora el array tiene la forma [['slug' => 'x', 'qty' => y]])
+        $slugs = array_column($itemsList, 'slug');
+        
+        $products = \App\Models\Product::whereIn('slug', $slugs)->get();
         
         // Generar QR Dinámico del BNB Sandbox
         $qrImage = $bnbService->generateQR($order->uuid, (float) $order->total, "Compra DARKOSYNC");
@@ -27,6 +30,6 @@ class CheckoutController extends Controller
             $qrImage = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={$qrUrl}";
         }
 
-        return view('checkout', compact('order', 'products', 'qrImage'));
+        return view('checkout', compact('order', 'products', 'qrImage', 'itemsList'));
     }
 }

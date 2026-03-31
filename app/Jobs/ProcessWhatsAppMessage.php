@@ -21,6 +21,28 @@ class ProcessWhatsAppMessage implements ShouldQueue
         $this->payload = $payload;
     }
 
+    /**
+     * Helper privado para el Job. Escáner de seguridad de borde.
+     */
+    private function containsProhibitedWords(string $text): bool
+    {
+        $prohibited = [
+            'gay', 'maricón', 'maricon', 'puto', 'joto', 'piter gay', 
+            'idiota', 'estúpido', 'estupido', 'imbécil', 'imbecil', 
+            'mierda', 'carajo', 'pendejo', 'pinga', 'verga', 'cojudo'
+        ];
+
+        $lowerText = strtolower(trim($text));
+        
+        foreach ($prohibited as $word) {
+            // Coincidencia de la palabra o "piter gay"
+            if (preg_match('/\b' . preg_quote($word, '/') . '\b/i', $lowerText) || str_contains($lowerText, 'piter gay')) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public function handle(): void
     {
         try {
@@ -135,40 +157,67 @@ class ProcessWhatsAppMessage implements ShouldQueue
                 $clientContext->interested_products ?? []
             );
 
-            // 7. Sanitización Anti-Alucinaciones Fuerte
-            $rawItems = $aiResult['items'] ?? [];
-            $items = is_array($rawItems) ? array_values(array_unique(Arr::flatten($rawItems))) : [];
-            $discount = (int) ($aiResult['discount'] ?? 0);
+            // 7. Interceptor Anti-Troll y Mapeo de Variables
+            $intent = $aiResult['intent'] ?? 'chat';
+            $finalMessage = $aiResult['message'] ?? 'Estamos procesando tu solicitud casero...';
 
-            if ($discount > $maxDiscount) {
-                $discount = $maxDiscount;
+            if ($this->containsProhibitedWords($finalMessage) || $this->containsProhibitedWords($text)) {
+                $finalMessage = "¡Jajaja casero! Casi me haces decir una locura 😂 Mejor volvamos a los accesorios. ¿Qué buscabas?";
+                $intent = 'troll';
+                $aiResult['intent'] = 'troll'; // Forcefully overwrite AI's given intent
+                $aiResult['items'] = [];
             }
 
-            $aiResult['items'] = $items;
-            $aiResult['discount'] = $discount;
+            $rawItems = $aiResult['items'] ?? [];
+            $items = [];
+            
+            // Sanitización y Compatibilidad Carritos Antiguos/Malformados
+            if (is_array($rawItems)) {
+                foreach ($rawItems as $itm) {
+                    if (is_string($itm)) { 
+                        $items[] = ['slug' => $itm, 'qty' => 1]; 
+                    } elseif (is_array($itm) && isset($itm['slug'])) { 
+                        $items[] = [
+                            'slug' => (string) trim($itm['slug']), 
+                            'qty' => max(1, (int) ($itm['qty'] ?? 1))
+                        ];
+                    }
+                }
+            }
 
-            // Validación de stock real
-            if (!empty($items)) {
-                $validCount = \App\Models\Product::whereIn('slug', $items)
+            // Validamos que los ítems realmente existan en BD (stock > 0)
+            $pureSlugs = array_values(array_unique(array_column($items, 'slug')));
+            $discount = 0; // Fixeado a 0 como solicitaron
+
+            if (!empty($pureSlugs) && $intent !== 'troll') {
+                $validCount = \App\Models\Product::whereIn('slug', $pureSlugs)
                     ->whereHas('variants', fn($q) => $q->where('stock', '>', 0))
                     ->count();
 
-                if ($validCount !== count($items)) {
-                    $aiResult['response'] = 'Estoy revisando el inventario exacto. ¿Qué modelo o color buscas amigo?';
-                    $aiResult['items'] = [];
-                    $aiResult['discount'] = 0;
+                if ($validCount !== count($pureSlugs)) {
+                    $finalMessage = 'Estoy revisando el inventario exacto. ¿Qué modelo o color buscas amigo?';
+                    $items = [];
                 }
             }
 
             // 8. Envío, Intent de Cierre de Venta y Memoria Final
-            $intent = $aiResult['intent'] ?? 'chat';
-            $finalMessage = $aiResult['response'];
+            $compraItems = !empty($items) ? $items : $cartRedis; 
 
-            // Si hay intención de compra y hay items en la memoria actual o el IA generó nuevos
-            if ($intent === 'buy' && (!empty($items) || !empty($cartRedis))) {
-                $compraItems = !empty($items) ? $items : $cartRedis;
-                // Calculamos total
-                $totalBruto = \App\Models\Product::whereIn('slug', $compraItems)->sum('precio');
+            // Verificamos "buy", que haya items a comprar y que el texto no sea troll
+            if ($intent === 'buy' && !empty($compraItems) && $this->containsProhibitedWords($finalMessage) === false) {
+                
+                $pureSlugsCompra = array_unique(array_column($compraItems, 'slug'));
+                
+                // Calculamos Total recorriendo la BD y cantidades
+                $totalBruto = 0;
+                $dbProducts = \App\Models\Product::whereIn('slug', $pureSlugsCompra)->get()->keyBy('slug');
+                                
+                foreach ($compraItems as $cItem) {
+                    if ($dbProduct = $dbProducts->get($cItem['slug'])) {
+                        $totalBruto += $dbProduct->precio * $cItem['qty'];
+                    }
+                }
+
                 $totalFinal = $totalBruto - ($totalBruto * ($discount / 100));
 
                 $order = \App\Models\Order::create([
@@ -179,11 +228,12 @@ class ProcessWhatsAppMessage implements ShouldQueue
                 ]);
 
                 Redis::del($cartRedisKey); // Vaciamos para no cobrar dobles
-                $items = []; // Reseteamos items de RAG
+                $items = []; // Reseteamos items para que no reescriba el carrito en la línea inferior
 
-                $finalMessage = "¡Excelente elección casero! Aquí tienes tu resumen y link de pago seguro (BNB): " . config('app.url') . "/checkout/" . $order->uuid;
+                $finalMessage = "¡Ya está tu pedido, casero! Aquí tienes el resumen exacto y tu código seguro (BNB) para pagarlo al instante:\n\n" . config('app.url') . "/checkout/" . $order->uuid;
             }
 
+            // Registramos el mensaje emitido
             $lead->whatsappMessages()->create([
                 'body' => $finalMessage,
                 'direction' => 'outbound',
@@ -200,22 +250,22 @@ class ProcessWhatsAppMessage implements ShouldQueue
                 'content' => $finalMessage,
                 'timestamp' => now()->toIso8601String(),
                 'metadata' => [
-                    'discount_offered' => $aiResult['discount'],
-                    'items_recommended' => $aiResult['items']
+                    'discount_offered' => $discount,
+                    'items_recommended' => $items
                 ]
             ];
             Redis::rpush($redisChatKey, json_encode($aiMsgObj));
             Redis::ltrim($redisChatKey, -5, -1);
             Redis::expire($redisChatKey, 86400);
 
-            if (!empty($aiResult['items'])) {
-                Redis::setex($cartRedisKey, 86400, json_encode($aiResult['items']));
+            if (!empty($items)) {
+                Redis::setex($cartRedisKey, 86400, json_encode($items));
             }
 
-            // Actualizar MySQL (memoria persistente)
-            if (!empty($aiResult['items'])) {
+            // Actualizar MySQL (memoria persistente) guardando sólo slugs para intereses
+            if (!empty($pureSlugs)) {
                 $current = $clientContext->interested_products ?? [];
-                $merged = array_unique(array_merge($current, $aiResult['items']));
+                $merged = array_unique(array_merge($current, $pureSlugs));
                 $clientContext->interested_products = array_values($merged);
                 $clientContext->save();
             }

@@ -61,9 +61,14 @@
                 
                 <div class="space-y-4">
                     @forelse($products as $product)
+                    @php
+                        // Buscar la cantidad correspondiente en la orden
+                        $qty = collect($itemsList)->firstWhere('slug', $product->slug)['qty'] ?? 1;
+                    @endphp
                     <div class="flex justify-between items-center p-3 rounded-xl bg-gray-700/30 border border-gray-600/50 hover:bg-gray-700/50 transition-colors">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center border border-gray-800 text-indigo-400 shadow-inner">
+                            <div class="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center border border-gray-800 text-indigo-400 shadow-inner overflow-hidden relative">
+                                <span class="absolute text-[10px] font-bold text-white bg-indigo-500 rounded-full px-1.5 py-0.5 top-0 right-0 border border-gray-900">{{ $qty }}</span>
                                 <i class="fas fa-box"></i>
                             </div>
                             <div>
@@ -71,7 +76,7 @@
                                 <p class="text-xs text-gray-400 mt-0.5">{{ $product->marca }}</p>
                             </div>
                         </div>
-                        <span class="text-sm font-bold text-gray-300">Bs. {{ number_format($product->precio, 2) }}</span>
+                        <span class="text-sm font-bold text-gray-300">Bs. {{ number_format($product->precio * $qty, 2) }}</span>
                     </div>
                     @empty
                     <p class="text-gray-500 text-sm italic text-center py-2">Sin productos reconstruidos en BD.</p>
