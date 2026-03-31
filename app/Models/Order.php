@@ -5,12 +5,21 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\AsArrayObject;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class Order extends Model
 {
-    use HasFactory;
+    use HasFactory, HasUuids;
+
+    public function uniqueIds()
+    {
+        return ['uuid'];
+    }
 
     protected $fillable = [
+        'uuid',
+        'items',
+        'total',
         'user_id',
         'lead_id',
         'guest_data',
@@ -24,6 +33,7 @@ class Order extends Model
     protected $casts = [
         'guest_data' => AsArrayObject::class,
         'total_amount' => 'decimal:2',
+        'items' => 'array',
     ];
 
     public function items()

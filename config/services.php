@@ -22,6 +22,13 @@ return [
         'api_key' => env('DEEPSEEK_API_KEY'),
     ],
 
+    'bnb' => [
+        'account_id' => env('BNB_ACCOUNT_ID'),
+        'auth_id' => env('BNB_AUTH_ID'),
+        'webhook_secret' => env('BNB_WEBHOOK_SECRET'),
+        'mock_mode' => env('BNB_MOCK_MODE', false),
+    ],
+
     'resend' => [
         'key' => env('RESEND_API_KEY'),
     ],

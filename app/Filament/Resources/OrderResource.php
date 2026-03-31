@@ -23,33 +23,7 @@ class OrderResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\TextInput::make('type')
-                    ->label('Tipo de Orden')
-                    ->disabled(),
-                Forms\Components\TextInput::make('payment_method')
-                    ->label('Método de Pago')
-                    ->disabled(),
-                Forms\Components\Select::make('status')
-                    ->label('Estado de Orden')
-                    ->options([
-                        'pending_payment' => 'Pendiente de Pago',
-                        'paid' => 'Pagado',
-                        'shipped' => 'Enviado',
-                        'cancelled' => 'Cancelado',
-                    ])
-                    ->required(),
-                Forms\Components\TextInput::make('session_uuid')
-                    ->label('UUID de Sesión')
-                    ->disabled(),
-                Forms\Components\Fieldset::make('Datos del Cliente (Guest)')
-                    ->schema([
-                        Forms\Components\TextInput::make('guest_data.name')
-                            ->label('Nombre'),
-                        Forms\Components\TextInput::make('guest_data.phone')
-                            ->label('Teléfono'),
-                        Forms\Components\TextInput::make('guest_data.address')
-                            ->label('Dirección'),
-                    ])->columns(3),
+                //
             ]);
     }
 
@@ -57,26 +31,7 @@ class OrderResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('user_id')
-                    ->numeric()
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('lead_id')
-                    ->numeric()
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('payment_method'),
-                Tables\Columns\TextColumn::make('type'),
-                Tables\Columns\TextColumn::make('status')
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('session_uuid')
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('updated_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                //
             ])
             ->filters([
                 //
@@ -94,7 +49,7 @@ class OrderResource extends Resource
     public static function getRelations(): array
     {
         return [
-            RelationManagers\ItemsRelationManager::class,
+            //
         ];
     }
 

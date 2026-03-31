@@ -37,7 +37,8 @@ class DeepSeekService
         $systemPrompt = "Eres vendedor de DARKOSYNC.AI. Usa el CONTEXTO ESTRUCTURADO para recordar qué vendes. "
             . "Responde conciso, estilo boliviano ('casero'). Prioriza cerrar la venta. "
             . "Nunca inventes stock, colores, tallas ni productos. "
-            . "Responde OBLIGATORIAMENTE en JSON válido: {\"response\": \"texto\", \"discount\": 0, \"items\": [\"slug1\", \"slug2\"]}. "
+            . "Si el cliente pide cerrar pedido, pagar o confirma compra, retorna \"intent\": \"buy\". Si no, \"chat\". "
+            . "Responde OBLIGATORIAMENTE en JSON válido: {\"response\": \"texto\", \"discount\": 0, \"items\": [\"slug1\", \"slug2\"], \"intent\": \"buy\"|\"chat\"}. "
             . "### CONTEXTO DE VENTA ### Carrito temporal: {$cartStr} | Intereses previos: {$interestsStr} | Inventario Real: {$ragContext}";
 
         $formattedHistory = [
@@ -82,6 +83,7 @@ class DeepSeekService
                         'response' => $parsed['response'],
                         'discount' => (int) ($parsed['discount'] ?? 0),
                         'items' => is_array($parsed['items'] ?? null) ? $parsed['items'] : [],
+                        'intent' => $parsed['intent'] ?? 'chat',
                         'tokens' => $data['usage']['total_tokens'] ?? 0
                     ];
                 }

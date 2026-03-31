@@ -160,8 +160,29 @@ class ProcessWhatsAppMessage implements ShouldQueue
                 }
             }
 
-            // 8. Envío y Memoria Final
+            // 8. Envío, Intent de Cierre de Venta y Memoria Final
+            $intent = $aiResult['intent'] ?? 'chat';
             $finalMessage = $aiResult['response'];
+
+            // Si hay intención de compra y hay items en la memoria actual o el IA generó nuevos
+            if ($intent === 'buy' && (!empty($items) || !empty($cartRedis))) {
+                $compraItems = !empty($items) ? $items : $cartRedis;
+                // Calculamos total
+                $totalBruto = \App\Models\Product::whereIn('slug', $compraItems)->sum('precio');
+                $totalFinal = $totalBruto - ($totalBruto * ($discount / 100));
+
+                $order = \App\Models\Order::create([
+                    'lead_id' => $lead->id,
+                    'items' => $compraItems,
+                    'total' => $totalFinal,
+                    'status' => 'pending',
+                ]);
+
+                Redis::del($cartRedisKey); // Vaciamos para no cobrar dobles
+                $items = []; // Reseteamos items de RAG
+
+                $finalMessage = "¡Excelente elección casero! Aquí tienes tu resumen y link de pago seguro (BNB): " . config('app.url') . "/checkout/" . $order->uuid;
+            }
 
             $lead->whatsappMessages()->create([
                 'body' => $finalMessage,
