@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Web;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Services\BnbPaymentService;
-use Illuminate\Http\Request;
 
 class CheckoutController extends Controller
 {
@@ -13,18 +12,29 @@ class CheckoutController extends Controller
     {
         $order = Order::where('uuid', $uuid)->firstOrFail();
         
-        // Reconstruimos los productos
-        $itemsList = is_array($order->items) ? $order->items : json_decode($order->items, true) ?? [];
+        // Reconstruimos itemsList (formato actual con slug y qty)
+        $itemsList = $order->items;
         
-        // Extraemos solo los slugs (ya que ahora el array tiene la forma [['slug' => 'x', 'qty' => y]])
+        if (is_string($itemsList)) {
+            $itemsList = json_decode($itemsList, true) ?? [];
+        }
+        
+        if (!is_array($itemsList)) {
+            $itemsList = [];
+        }
+
+        // Extraemos solo los slugs
         $slugs = array_column($itemsList, 'slug');
-        
-        $products = \App\Models\Product::whereIn('slug', $slugs)->get();
-        
+        $slugs = array_unique(array_filter($slugs));
+
+        $products = \App\Models\Product::whereIn('slug', $slugs)
+                    ->get()
+                    ->keyBy('slug');
+
         // Generar QR Dinámico del BNB Sandbox
         $qrImage = $bnbService->generateQR($order->uuid, (float) $order->total, "Compra DARKOSYNC");
         
-        // Fallback placeholder si la API de BNB Sandbox falla
+        // Fallback si falla la API de BNB
         if (!$qrImage) {
             $qrUrl = urlencode(config('app.url') . "/checkout/{$order->uuid}");
             $qrImage = "https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={$qrUrl}";
