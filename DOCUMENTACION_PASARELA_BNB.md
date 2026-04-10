@@ -353,3 +353,5 @@ CREATE TABLE `qrs` (
 Este documento está actualizado al 23 de febrero de 2026 y puede usarse como base para replicar el módulo en otros sistemas Laravel.
 
 ```
+
+```

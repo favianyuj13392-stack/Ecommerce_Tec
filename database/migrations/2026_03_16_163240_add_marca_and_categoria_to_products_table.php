@@ -16,10 +16,7 @@ return new class extends Migration
             $table->string('categoria')->nullable()->index()->after('marca');
         });
 
-        Schema::table('products', function (Blueprint $table) {
-            $table->dropFullText(['nombre', 'descripcion']);
-            $table->fullText(['nombre', 'descripcion', 'marca', 'categoria']);
-        });
+        // Removed fulltext indexes since we migrated to Postgres and pgvector
     }
 
     /**

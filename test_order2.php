@@ -5,9 +5,12 @@ $app = require_once __DIR__ . '/bootstrap/app.php';
 $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
 $kernel->bootstrap();
 
-$o = \App\Models\Order::where('uuid', 'e1e66010-2a64-4ccd-b997-6e9a620254bc')->first();
+$o = \App\Models\Order::where('uuid', 'like', 'f8dee6aa%')->first();
 if ($o) {
-    echo "ORDER FOUND! Items: " . print_r($o->items, true) . "\n";
+    echo "ORDER FOUND!\n";
+    var_dump($o->items);
+    echo "TOTAL: " . $o->total . "\n";
+    echo "TOTAL_AMOUNT: " . $o->total_amount . "\n";
 } else {
     echo "ORDER NOT FOUND!\n";
 }

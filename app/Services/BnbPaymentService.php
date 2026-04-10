@@ -29,7 +29,7 @@ class BnbPaymentService
 
         try {
             // Nota: Al tratarse de un Sandbox se asume la URL de pruebas del BNB (API SrvEnlace)
-            $response = Http::post('https://test.bnb.com.bo/ApiSrvEnlaceEmpresasQr/api/Qr/GetQrAuthentication', [
+            $response = Http::timeout(5)->post('https://test.bnb.com.bo/ApiSrvEnlaceEmpresasQr/api/Qr/GetQrAuthentication', [
                 'accountId' => $this->accountId,
                 'authenticationId' => $this->authId
             ]);
@@ -64,7 +64,7 @@ class BnbPaymentService
 
         try {
             // Endpoint estándar de generación de QR QrSimple
-            $response = Http::withToken($token)->post('https://test.bnb.com.bo/ApiSrvEnlaceEmpresasQr/api/Qr/GenerarQr', [
+            $response = Http::timeout(5)->withToken($token)->post('https://test.bnb.com.bo/ApiSrvEnlaceEmpresasQr/api/Qr/GenerarQr', [
                 'businessCode' => $this->accountId,
                 'amount' => $amount,
                 'currency' => 'BOB',

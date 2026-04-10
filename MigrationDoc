@@ -1,0 +1,54 @@
+Hoja de Ruta Maestra: DarkoSync.AI (Reconstrucción Total)
+Arquitectura: Microservicios Desacoplados (Laravel + FastAPI + PostgreSQL)
+Visión: Escalar un ecosistema de ventas automatizadas capaz de funcionar como un SaaS independiente o integrado profundamente con el E-commerce propio.
+🏗️ Fase 1: Infraestructura y Persistencia (Semana 1)
+El objetivo es establecer un entorno de desarrollo robusto que soporte la búsqueda semántica y la escalabilidad.
+1.1. PostgreSQL: El Corazón de Datos
+Instancia Única con Aislamiento Lógico: Configuraremos una sola instancia de PostgreSQL 16 para optimizar costos de RAM en el VPS, pero con dos bases de datos separadas:
+db_ecommerce: Manejada por Laravel. Tablas: users, products, variants, orders, payments.
+db_ai_brain: Manejada por FastAPI. Tablas: product_embeddings, chat_sessions, message_logs, ai_metrics.
+Extensión Vectorial: Instalación de pgvector en db_ai_brain para habilitar el almacenamiento de tensores (1536 o 1024 dimensiones según el modelo).
+1.2. Dockerización de "Grado Producción"
+Orquestación: Un archivo docker-compose.yml que defina:
+laravel_app: PHP 8.3-FPM + Nginx.
+fastapi_bot: Python 3.12 + Uvicorn (ASGI).
+postgres_db: Imagen oficial de Postgres + pgvector.
+redis_cache: Para persistencia de sesiones de chat y colas de mensajes.
+🧠 Fase 2: Desarrollo del "Cerebro" (FastAPI AI) (Semanas 2-3)
+Aquí reside la inteligencia. FastAPI debe ser extremadamente ligero y rápido.
+2.1. Gestión de Mensajería (WhatsApp Cloud API)
+Respuesta Inmediata: FastAPI recibe el webhook de Meta, valida el payload y lo envía a una cola en Redis. Responde 200 OK en <200ms para evitar que Meta reintente el envío.
+Worker Asíncrono: Un proceso separado consume la cola, permitiendo que el procesamiento de DeepSeek (que tarda 3-10s) no bloquee el servidor.
+2.2. Motor RAG (Búsqueda Semántica)
+Vectorización: Integración con modelos de embeddings (OpenAI text-embedding-3-small o similares).
+Búsqueda Cosidencial: Implementar consultas SELECT usando el operador <=> de pgvector para encontrar productos similares por concepto, no por palabras clave.
+Índice HNSW: Configurar un índice HNSW en la columna vectorial para búsquedas instantáneas incluso con catálogos de miles de productos.
+2.3. Orquestador de DeepSeek
+Prompt Engineering: Sistema de "System Prompts" dinámicos que inyectan la personalidad del vendedor boliviano y los datos del catálogo recuperados por el RAG.
+Context Caching: Estructurar los mensajes para que las instrucciones base y el catálogo estático se mantengan al inicio del prompt, activando el ahorro de costos de DeepSeek.
+🛒 Fase 4: E-commerce y Sincronización (Laravel) (Semanas 3-4)
+Laravel se encarga de todo lo que requiere alta seguridad transaccional y legal.
+4.1. Gestión de Catálogo y Variantes
+Estructura de Datos: Laravel gestiona el inventario real. Cada producto puede tener múltiples variantes (color, talla, material) con precios distintos.
+Observer de Sincronización: Al crear/actualizar un producto en Laravel, se dispara un evento que envía los metadatos a FastAPI para actualizar el vector de búsqueda.
+4.2. Checkout y Pagos (Pasarela BNB)
+Links Mágicos: Cuando el bot cierra una venta, solicita a Laravel un link de pago. Laravel genera un UUID único y lo devuelve al bot.
+Gestión de QR: Laravel integra la generación de QR del BNB y el webhook de confirmación de pago. Al confirmarse, Laravel notifica a FastAPI para que el bot felicite al usuario por WhatsApp.
+🔄 Fase 5: Flujo de Operación (End-to-End)
+Cómo interactúan los sistemas en una venta real:
+Usuario: Envía "Busco algo para el sol" a WhatsApp.
+FastAPI: Recibe -> Pone en Redis -> Responde 200 OK.
+Worker (Python): Toma el mensaje -> Genera vector -> Busca en db_ai_brain.
+Validación de Stock: FastAPI hace un GET rápido a Laravel para confirmar si los productos encontrados tienen stock.
+Generación: Se envía a DeepSeek: "Contexto: Protector solar FPS 50. Stock: 10 unidades. Pregunta: Busco algo para el sol".
+Respuesta: El bot responde con beneficios y el precio.
+Cierre: El bot detecta intención de compra -> Pide link a Laravel -> Envía link de pago al usuario.
+🛡️ Fase 6: Capa de Seguridad y Guardrails (Semana 5)
+Anti-Troll: Filtro de entrada que bloquea prompts que intenten cambiar la personalidad del bot o pedir descuentos no autorizados.
+Control de Alucinaciones: El bot tiene prohibido hablar de productos que no estén en el contexto del RAG. Si no sabe algo, debe decir: "Consultaré con un humano y te aviso".
+Límites de Rate: Controlar la cantidad de mensajes por minuto por número de teléfono para evitar ataques de denegación de servicio.
+
+📝 Próximos Pasos Técnicos Inmediatos
+Configurar el repositorio Monorepo (o separar en dos) con el Docker inicial.
+Definir el esquema de la tabla de productos en Laravel que servirá de fuente para el RAG.
+Crear el prototipo del endpoint de Webhook en FastAPI para el handshake de WhatsApp.

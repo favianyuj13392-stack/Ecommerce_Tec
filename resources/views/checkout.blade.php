@@ -63,7 +63,8 @@
                     @forelse($products as $product)
                     @php
                         // Buscar la cantidad correspondiente en la orden
-                        $qty = collect($itemsList)->firstWhere('slug', $product->slug)['qty'] ?? 1;
+                        $item = collect($itemsList)->firstWhere('slug', $product->slug);
+                        $qty = $item ? ($item['qty'] ?? 1) : 1;
                     @endphp
                     <div class="flex justify-between items-center p-3 rounded-xl bg-gray-700/30 border border-gray-600/50 hover:bg-gray-700/50 transition-colors">
                         <div class="flex items-center gap-3">
