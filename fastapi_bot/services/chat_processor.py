@@ -92,8 +92,45 @@ class ChatProcessor:
             INSERT INTO whatsapp_messages (lead_id, message_id, body, direction, source, tokens_used, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """
+        try:
+            async with db.ecommerce_pool.acquire() as conn:
+                await conn.execute(query, lead_id, message_id or '', body, direction, source, tokens)
+        except Exception as e:
+            logger.error(f"Error guardando historial en DB (no bloqueante): {e}")
+
+    @classmethod
+    async def validate_order_items(cls, items: list) -> tuple[bool, str]:
+        """ Verifica que los items existen, tienen stock y cantidad válida """
+        if not items:
+            return False, "El carrito está vacío."
+            
+        pure_slugs = []
+        for itm in items:
+            slug = itm.get('slug')
+            qty = itm.get('qty', 1)
+            if not slug or type(qty) not in [int, float] or qty <= 0:
+                return False, "Casero, no pude procesar las cantidades correctamente. Empecemos de nuevo."
+            pure_slugs.append(slug)
+            
+        pure_slugs = list(set(pure_slugs)) # Unique
+        placeholders = ",".join(f"${i+1}" for i in range(len(pure_slugs)))
+        
         async with db.ecommerce_pool.acquire() as conn:
-            await conn.execute(query, lead_id, message_id or '', body, direction, source, tokens)
+            # Check products exist and have stock either in variants or products fallback
+            query = f"""
+                SELECT p.slug
+                FROM products p
+                LEFT JOIN product_variants pv ON p.id = pv.product_id
+                WHERE p.slug IN ({placeholders}) 
+                AND (pv.stock > 0 OR (pv.id IS NULL AND p.precio IS NOT NULL))
+            """
+            rows = await conn.fetch(query, *pure_slugs)
+            valid_slugs = {row['slug'] for row in rows}
+            
+            if len(valid_slugs) != len(pure_slugs):
+                return False, "Estoy revisando el inventario y algunos productos ya no están disponibles. ¿Podemos rearmar el pedido?"
+                
+        return True, ""
 
     @classmethod
     async def create_order(cls, lead_id: int, items: list, cart_redis_key: str):
@@ -277,10 +314,15 @@ class ChatProcessor:
             # 4. Flujo de Compra (Magic Link)
             compra_items = items if items else cart_redis
             if intent == 'buy' and compra_items and not is_troll:
-                checkout_url, total_calc = await cls.create_order(lead['id'], compra_items, cart_redis_key)
-                if checkout_url:
-                    final_message = f"¡Ya está tu pedido, casero! Aquí tienes el resumen exacto y tu código seguro (BNB) para pagarlo al instante:\n\n{checkout_url}"
-                    items = [] # clear items from payload to not re-add
+                is_valid, error_msg = await cls.validate_order_items(compra_items)
+                if not is_valid:
+                    final_message = error_msg
+                    items = []
+                else:
+                    checkout_url, total_calc = await cls.create_order(lead['id'], compra_items, cart_redis_key)
+                    if checkout_url:
+                        final_message = f"¡Ya está tu pedido, casero! Aquí tienes el resumen exacto y tu código seguro (BNB) para pagarlo al instante:\n\n{checkout_url}"
+                        items = [] # clear items from payload to not re-add
             
             logger.info(f"Respuesta IA: {final_message}")
 
@@ -329,3 +371,9 @@ class ChatProcessor:
                 logger.info(f"✅ Mensaje enviado a {phone} exitosamente.")
         except Exception as e:
             logger.error(f"❌ Falló el envío de WhatsApp a {phone}. Error: {e}")
+
+    @classmethod
+    async def send_fallback_message(cls, phone: str):
+        """ Envia mensaje amigable en caso de excepción severa """
+        text = "¡Hola casero! Estamos reabasteciendo la tienda un momento. ¿En qué te ayudo?"
+        await cls.send_whatsapp_message(phone, text)

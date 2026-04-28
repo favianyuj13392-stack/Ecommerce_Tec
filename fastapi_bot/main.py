@@ -80,7 +80,10 @@ async def check_health():
                 # Risk 2: Validar la antiguedad del último embedding
                 last_updated = await conn.fetchval('SELECT MAX(updated_at) FROM product_embeddings')
                 
-            services['bot_rag_db'] = {"status": "ok", "last_sync": str(last_updated) if last_updated else "Nunca"}
+                # Check pendings in queue
+                pending_retries = await conn.fetchval('SELECT COUNT(*) FROM product_sync_queue')
+                
+            services['bot_rag_db'] = {"status": "ok", "last_sync": str(last_updated) if last_updated else "Nunca", "pending_retries": pending_retries}
         else:
             services['bot_rag_db'] = "not_loaded"
 
@@ -195,21 +198,36 @@ async def internal_sync_products(request: Request):
     if not text_to_vectorize or not product_id:
         raise HTTPException(status_code=400, detail="Faltan datos para vectorizar")
         
-    vector = await EmbeddingsEngine.generate_embedding_async(text_to_vectorize)
-    vector_str = "[" + ",".join(map(str, vector)) + "]"
-    
-    query = """
-        INSERT INTO product_embeddings (product_id, nombre, categoria, embedding)
-        VALUES ($1, $2, $3, $4::vector)
-        ON CONFLICT (product_id) DO UPDATE 
-        SET embedding = EXCLUDED.embedding, nombre = EXCLUDED.nombre, 
-            categoria = EXCLUDED.categoria, updated_at = CURRENT_TIMESTAMP
-    """
-    async with db.rag_pool.acquire() as conn:
-        await conn.execute(query, product_id, nombre, categoria, vector_str)
+    try:
+        vector = await EmbeddingsEngine.generate_embedding_async(text_to_vectorize)
+        vector_str = "[" + ",".join(map(str, vector)) + "]"
         
-    logger.info(f"RAG Sincronizado para producto_id {product_id}")
-    return {"status": "synced", "product_id": product_id}
+        query = """
+            INSERT INTO product_embeddings (product_id, nombre, categoria, embedding)
+            VALUES ($1, $2, $3, $4::vector)
+            ON CONFLICT (product_id) DO UPDATE 
+            SET embedding = EXCLUDED.embedding, nombre = EXCLUDED.nombre, 
+                categoria = EXCLUDED.categoria, updated_at = CURRENT_TIMESTAMP
+        """
+        async with db.rag_pool.acquire() as conn:
+            await conn.execute(query, product_id, nombre, categoria, vector_str)
+            
+            # Borrar de la cola de reintentos si existía
+            await conn.execute("DELETE FROM product_sync_queue WHERE product_id = $1", product_id)
+            
+        logger.info(f"RAG Sincronizado para producto_id {product_id}")
+        return {"status": "synced", "product_id": product_id}
+    except Exception as e:
+        logger.error(f"Error vectorizando producto {product_id}, encolando para reintento: {e}")
+        query_queue = """
+            INSERT INTO product_sync_queue (product_id, nombre, categoria, vector_text, error_log)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (product_id) DO UPDATE
+            SET error_log = EXCLUDED.error_log, next_retry_at = CURRENT_TIMESTAMP + interval '10 seconds'
+        """
+        async with db.rag_pool.acquire() as conn:
+            await conn.execute(query_queue, product_id, nombre, categoria, text_to_vectorize, str(e))
+        return {"status": "queued_for_retry", "product_id": product_id}
 
 
 @app.post("/internal/create-order")

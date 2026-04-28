@@ -23,10 +23,17 @@ async def main():
 
     async def _safe_process(msg):
         try:
-            # Corrección Bug: wait_for no es un context manager. Usamos await y try-finally manual.
             await asyncio.wait_for(semaphore.acquire(), timeout=30.0)
             try:
                 await ChatProcessor.process_message_async(msg)
+            except Exception as e:
+                logger.error(f"Worker Error Crítico en process_message_async: {e}", exc_info=True)
+                phone = msg.get('from')
+                if phone:
+                    try:
+                        await ChatProcessor.send_fallback_message(phone)
+                    except Exception as fallback_error:
+                        logger.error(f"No se pudo enviar fallback a {phone}: {fallback_error}")
             finally:
                 semaphore.release()
         except asyncio.TimeoutError:
